@@ -73,7 +73,8 @@ object FreezingIronmanBuild extends Build {
                                 "org.scalatest" %% "scalatest" % "2.1.0" % "test",
                                 "junit" % "junit" % "4.8.1" % "test"),
     testFrameworks += new TestFramework("org.scalameter.ScalaMeterFramework"),
-    parallelExecution in Test := false
+    parallelExecution in Test := false,
+    fork in Test := true
   )
 
   lazy val _freezing   = Project(id = "freezing",            base = file(".")) aggregate (macros, benchmarks, scratchpad)

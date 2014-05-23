@@ -6,7 +6,7 @@ import scala.language.experimental.macros
 object MacroLinkedList {
 
   import BenchType._
-  
+
   def benchmarkLinkedList(tpe: BenchType): Unit = macro benchmark_impl
 
   def benchmark_impl(c: Context)(tpe: c.Expr[BenchType]): c.Expr[Unit] = {
@@ -18,22 +18,31 @@ object MacroLinkedList {
       case "Specialized" => q"@specialized type T"
     }
 
+    val benchName = "LinkedList"
+
+    val name = c.universe.newTermName(
+      tpe.tree.symbol.name.toString match {
+        case "Generic"     => s"${benchName}Generic"
+        case "Miniboxed"   => s"${benchName}Miniboxed"
+        case "Specialized" => s"${benchName}Specialized"
+      })
+
     val target: Tree = q"""
-      object BenchmarkTarget {
+      object $name {
         class LinkedList[$parameter](implicit manifest: Manifest[T]) {
-        
+
           private var amount: Int = 0
           private val first: Node[T] = new Node[T](null.asInstanceOf[T], null)
           private var last: Node[T] = first
-        
+
           def add(t: T): Unit = addAfter(t, last)
-          
+
           def addAt(t: T, i: Int): Unit = addAfter(t, getNode(i))
-          
+
           def get(i: Int): T = getNode(i).next.elem
-          
+
           def size: Int = amount
-          
+
           def remove(t: T): Unit = {
             var node = first
             while (node != null && node.elem != t) {
@@ -48,7 +57,7 @@ object MacroLinkedList {
             node.next = node.next.next
             amount -= 1
           }
-          
+
           def removeAt(i: Int): Unit = {
             val node = getNode(i)
             if (node.next eq last) {
@@ -57,7 +66,7 @@ object MacroLinkedList {
             node.next = node.next.next
             amount -= 1
           }
-          
+
 //          def map[U](f: T => U)(implicit mu: Manifest[U]) = {
 //            val linkedList = new LinkedList[U]
 //            var nodeInit = first
@@ -70,7 +79,7 @@ object MacroLinkedList {
 //            linkedList.last = nodeNew
 //            linkedList
 //          }
-//          
+//
 //          def filter(f: T => Boolean) = {
 //            val linkedList = new LinkedList[T]
 //            var nodeInit = first
@@ -85,7 +94,7 @@ object MacroLinkedList {
 //            linkedList.last = nodeNew
 //            linkedList
 //          }
-//          
+//
 //          def fold[U](f: (U, T) => U, z: U) = {
 //            var folded = z
 //            var node = first
@@ -95,12 +104,12 @@ object MacroLinkedList {
 //            }
 //            folded
 //          }
-        
+
           def clear() {
             first.next = null
             last = first
           }
-        
+
           def toArray: Array[T] = {
             val array = new Array[T](amount)
             var node = first
@@ -112,9 +121,9 @@ object MacroLinkedList {
             }
             array
           }
-          
+
           override def toString: String = "(" + toArray.mkString(" ") + ")"
-          
+
           def getNode(i: Int): Node[T] = {
             if (i < 0) {
               throw new NoSuchElementException
@@ -130,7 +139,7 @@ object MacroLinkedList {
             }
             node
           }
-          
+
           def addAfter(t: T, n: Node[T]): Unit = {
             val node = new Node[T](t, n.next)
             if (last eq n) {
@@ -141,7 +150,7 @@ object MacroLinkedList {
             amount += 1
           }
         }
-        
+
         class Node[T](var elem: T, var next: Node[T])
       }
     """
@@ -150,7 +159,7 @@ object MacroLinkedList {
       for (T <- List(tq"Int", tq"String", tq"Long")) yield {
         val benchTitle = "Benchmark for " + tpe.tree.symbol.name + " LinkedList[" + T.name.toString + "]:  "
         val benchString = c.parse("\"" + benchTitle + "\"")
-        
+
         val elements: List[Tree] = T match {
           case tq"Int"    => List(q"1", q"2", q"3")
           case tq"String" => List(c.parse("\"" + "1" + "\""), c.parse("\"" + "2" + "\""), c.parse("\"" + "3" + "\""))
@@ -158,18 +167,18 @@ object MacroLinkedList {
         }
 
         q"""
-          import BenchmarkTarget._
-          
+          import $name._
+
           var outsider = 0.0
-          val size = 300000
-          
+          val size = 3000000
+
           val linkedList = new LinkedList[$T]
           val linkedListGen = Gen.single("LinkedList")(linkedList)
 
           performance of $benchString in {
             measure method "get" in {
               using(linkedListGen) in {
-                l => 
+                l =>
                   var i = 0
                   var result = 0.0
                   l.add(${elements(0)})
@@ -179,7 +188,7 @@ object MacroLinkedList {
                     result += l.get(1).toDouble
                     i += 1
                   }
-                  
+
                   outsider = result  // avoid in-lining
               }
             }

@@ -6,7 +6,7 @@ import scala.language.experimental.macros
 object MacroHashMap {
 
   import BenchType._
-  
+
   def benchmarkHashMap(tpe: BenchType): Unit = macro benchmark_impl
 
   def benchmark_impl(c: Context)(tpe: c.Expr[BenchType]): c.Expr[Unit] = {
@@ -17,28 +17,37 @@ object MacroHashMap {
       case "Miniboxed"   => q"@miniboxed type K"
       case "Specialized" => q"@specialized type K"
     }
-    
+
     val valParameter: TypeDef = tpe.tree.symbol.name.toString match {
       case "Generic"     => q"type V"
       case "Miniboxed"   => q"@miniboxed type V"
       case "Specialized" => q"@specialized type V"
     }
 
+    val benchName = "HashMap"
+
+    val name = c.universe.newTermName(
+      tpe.tree.symbol.name.toString match {
+        case "Generic"     => s"${benchName}Generic"
+        case "Miniboxed"   => s"${benchName}Miniboxed"
+        case "Specialized" => s"${benchName}Specialized"
+      })
+
     val target: Tree = q"""
-      object BenchmarkTarget {
+      object $name {
         class HashMap[$keyParameter, $valParameter](implicit keyManifest: Manifest[K], valueManifest: Manifest[V]) {
           val size = 128
           private var values = new Array[V](size)
           private var keys = new Array[K](size)
           private var count = new Array[Int](size)
-          
+
           def put(key: K, value: V): V = {
             val keyHashCode = {
               val k = key.hashCode % size
               if (k <= 0) k + size
               else k
             }
-            
+
             def recursivePut(index: Int): V = {
               if (index == keyHashCode - 1 && count(index) != 0) {
                 throw new Error("HashMap is full.")
@@ -53,17 +62,17 @@ object MacroHashMap {
                 recursivePut((index + 1) % size)
               }
             }
-            
+
             recursivePut(keyHashCode % size)
           }
-          
+
           def get(key: K): V = {
             val keyHashCode = {
               val k = key.hashCode % size
               if (k <= 0) k + size
               else k
             }
-            
+
             def recursiveGet(index: Int): V = {
               if (index == keyHashCode - 1 && keys(index) != key) {
                 null.asInstanceOf[V]
@@ -73,21 +82,21 @@ object MacroHashMap {
                 recursiveGet((index + 1) % size)
               }
             }
-            
+
             if (contains(key)) {
               recursiveGet(keyHashCode % size)
             } else {
               null.asInstanceOf[V]
             }
           }
-          
+
           def contains(key: K): Boolean = {
             val keyHashCode = {
               val k = key.hashCode % size
               if (k <= 0) k + size
               else k
             }
-            
+
             def recursiveContains(index: Int): Boolean = {
               if (index == keyHashCode - 1 && (count(index) == 0 || keys(index) != key)) {
                 false
@@ -97,17 +106,17 @@ object MacroHashMap {
                 true
               } else recursiveContains((index + 1) % size)
             }
-            
+
             recursiveContains(keyHashCode % size)
           }
-          
+
           def remove(key: K): Unit = {
             val keyHashCode = {
               val k = key.hashCode % size
               if (k <= 0) k + size
               else k
             }
-            
+
             def recursiveRemove(index: Int): Boolean = {
               if (index == keyHashCode - 1 && keys(index) != key) {
                 false
@@ -119,13 +128,13 @@ object MacroHashMap {
                 true
               } else {
                 val isRemoved = recursiveRemove((index + 1) % size)
-                if (isRemoved) { 
+                if (isRemoved) {
                   count(index) -= 1
                 }
                 isRemoved
               }
             }
-            
+
             if (contains(key)) {
               recursiveRemove(keyHashCode % size)
             } else {
@@ -140,7 +149,7 @@ object MacroHashMap {
       for (K <- List(tq"Int", tq"String", tq"Long"); V <- List(tq"Int", tq"String", tq"Long")) yield {
         val benchTitle = "Benchmark for " + tpe.tree.symbol.name + " HashMap[" + K.name.toString + ", " + V.name.toString + "]:  "
         val benchString = c.parse("\"" + benchTitle + "\"")
-        
+
         val key: Tree = K match {
           case tq"Int"    => q"8"
           case tq"String" => c.parse("\"" + "8" + "\"")
@@ -153,11 +162,11 @@ object MacroHashMap {
         }
 
         q"""
-          import BenchmarkTarget._
-          
+          import $name._
+
           var outsider = 0.0
-          val size = 300000
-          
+          val size = 3000000
+
           val hashMap = new HashMap[$K, $V]
           val hashMapGen = Gen.single("HashMap")(hashMap)
 
@@ -172,7 +181,7 @@ object MacroHashMap {
                     result += h.get($key).toDouble
                     i += 1
                   }
-        
+
                   outsider = result  // avoid in-lining
               }
             }
